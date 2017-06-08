@@ -7,13 +7,15 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <conio.h>
+#include <ctime>
 
 using namespace glm;
 using namespace std;
 
 GLuint VBO;
-//GLuint gScaleLocation;
-//TODO 
+GLuint colorVec;
+GLuint posMat;
 
 GLuint LoadShaders(const char * vertex_file_path, const char * fragment_file_path) {
 
@@ -106,9 +108,91 @@ mat4 applyPerspective(mat4 input) {
 	);
 	return perspective(radians(45.0f), (float)16 / (float)9, 0.1f, 150.0f) * view * input;
 }
-class Bullet {
 
+class Bullet {
+	GLuint vertexBuffer;
+	GLuint programID;
+	GLuint posistion;
+	GLuint colorID;
+
+	vec3 coords = vec3(0.0f, 0.0f, 0.0f);
+	vec3 color = vec3(0, 1, 1);
+	vec3 verts[6];
+	mat4 model = mat4(1.0f);
+	mat4 translation = mat4(1.0f);
+	mat4 rotation = mat4(1.0f);
+	mat4 result = mat4(1.0f);
+	mat4 scal = mat4(1.0f);
+public:
+	float x = 0;
+	float y = 0;
+	float rot = 0;
+	float v = .05;
+	float dV = 0;
+	float dRot = 0;
+	float dX = 0;
+	float dY = 0;
+	~Bullet() {
+	}
+	void compileShaders(char *vsPath, char* fsPath) {
+		programID = LoadShaders(vsPath, fsPath);
+	}
+	void setProgramID(GLuint ID) {
+		programID = ID;
+	}
+	void update() {
+		//coords
+		//coords = vec3(coords.x + sinf(radians(rot))*v, coords.y + cosf(radians(rot))*v, 1);
+		//FIX translation matrix
+		v += dV;
+		dX = -sinf(rot)*v;
+		dY = cosf(rot)*v;
+		x += dX;
+		y += dY;
+
+		//TODO
+		//USES COORDS< OR OFFSET ORGINAL USING COORDS
+		result = applyPerspective(translate(translation, vec3(coords.x+x,coords.y+y, 0))*(rotate(rotation, rot, vec3(0, 0, 1)) * scale(scal,vec3(.5,.5,0)) * translate(model, vec3(0, 0, 0))));
+		//printf("Center %F,%F\n", x, y);
+
+		//result = applyPerspective(translate(rotate(translate(model,vec3(0,0,0)), rot, vec3(0.0f,0.0f,1.0f)), vec3(x, y, 0)));
+		glUniformMatrix4fv(posMat, 1, GL_FALSE, &result[0][0]);
+		glUniform3f(colorVec, color.x, color.y, color.z);
+	}
+	void draw() {
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glDisableVertexAttribArray(0);
+	}
+	void render() {
+		glUseProgram(programID);
+		update();
+		draw();
+		glUseProgram(0);
+	}
+	Bullet() {}
+	Bullet(GLuint vertexB, GLuint program, vec3 pos, float theta) {
+		vertexBuffer = vertexB;
+		programID = program;
+		coords = pos;
+		rot = theta;
+
+		verts[0] = vec3(-0.5f, 1.0f, 0.0f);
+		verts[1] = vec3(-0.5f, -1.0f, 0.0f);
+		verts[2] = vec3(0.5f, 1.0f, 0.0f);
+		verts[3] = vec3(0.5f, 1.0f, 0.0f);
+		verts[4] = vec3(0.5f, -1.0f, 0.0f);
+		verts[5] = vec3(-0.5f, -1.0f, 0.0f);
+
+		glGenBuffers(1, &vertexBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
+	}
 };
+
+vector<Bullet*> bullets;
 
 class Player {
 	GLuint vertexBuffer;
@@ -116,7 +200,7 @@ class Player {
 	GLuint posistion;
 	GLuint colorID;
 
-	vec3 coords = vec3(0.0f,0.0f,0.0f);
+	//vec3 coords = vec3(0.0f,0.0f,0.0f);
 	vec3 color = vec3(1,0,1);
 	vec3 verts[3];
 	mat4 model = mat4(1.0f);
@@ -137,23 +221,12 @@ public:
 	void compileShaders(char *vsPath, char* fsPath) {
 		programID = LoadShaders(vsPath, fsPath);
 	}
-	void assertUniformLocation() {
-		posistion = glGetUniformLocation(programID, "posistion");
-		assert(posistion != 0xFFFFFFFF);
-		colorID = glGetUniformLocation(programID, "colorIn");
-		assert(posistion != 0xFFFFFFFF);
-		//rotation = glGetUniformLocation(programID, "rotation");
-		//assert(rotation != 0xFFFFFFFF);
-		//gScaleLocation = glGetUniformLocation(programID, "gScale");
-		//assert(gScaleLocation != 0xFFFFFFFF);
-	}
 	void setProgramID(GLuint ID) {
 		programID = ID;
-		assertUniformLocation();
 	}
 	void update() {
 		//coords
-		coords = vec3(coords.x+ sinf(radians(rot))*v, coords.y+ cosf(radians(rot))*v, 1);
+		//coords = vec3(coords.x-sinf(radians(rot))*v, coords.y+cosf(radians(rot))*v, 0);
 		//FIX translation matrix
 		if (dV < .001 && dV > -.001) {
 			v += dV;
@@ -183,22 +256,17 @@ public:
 		dY = cosf(rot)*v;
 		x += dX;
 		y += dY;
-		//result = perxpective * translation * roatation * translation center * model
-		/**
-		origin = translate(model, vec3(0, 0, 0));
-		rotation = rotate(origin, rot, vec3(0, 0, 1));
-		translation = translate(rotation, vec3(x, y, 0));
-		printf("Center %d,%d\n", x, y);
 
-		result = applyPerspective(translation);
-		*/
 		result = applyPerspective(translate(translation, vec3(x, y, 0))*(rotate(rotation,rot,vec3(0,0,1))*translate(model,vec3(0,0,0))));
-		printf("Center %F,%F\n", x, y);
+		//printf("Center %F,%F\n", x, y);
 
 		//result = applyPerspective(translate(rotate(translate(model,vec3(0,0,0)), rot, vec3(0.0f,0.0f,1.0f)), vec3(x, y, 0)));
-		glUniformMatrix4fv(posistion, 1, GL_FALSE, &result[0][0]);
-		glUniform3f(colorID, color.x,color.y,color.z);
+		glUniformMatrix4fv(posMat, 1, GL_FALSE, &result[0][0]);
+		glUniform3f(colorVec, color.x,color.y,color.z);
 
+	}
+	void shoot() {
+		bullets.push_back(&Bullet(VBO,programID,vec3(x,y,0),rot));
 	}
 	void draw() {
 		glEnableVertexAttribArray(0);
@@ -237,7 +305,116 @@ public:
 		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
 	}
 };
+class Organism {
+	GLuint vertexBuffer;
+	GLuint programID;
+	GLuint posistion;
+	GLuint colorID;
 
+	//vec3 coords = vec3(0.0f,0.0f,0.0f);
+	vec3 color = vec3(1, 0, 1);
+	vec3 verts[3];
+	mat4 model = mat4(1.0f);
+	mat4 translation = mat4(1.0f);
+	mat4 rotation = mat4(1.0f);
+	mat4 result = mat4(1.0f);
+	mat4 origin = mat4(1.0f);
+public:
+	float x = 0;
+	float y = 0;
+	float rot = 0;
+	float v = 0;
+	float dV = 0;
+	float dRot = 0;
+	float dX = 0;
+	float dY = 0;
+	void compileShaders(char *vsPath, char* fsPath) {
+		programID = LoadShaders(vsPath, fsPath);
+	}
+	void setProgramID(GLuint ID) {
+		programID = ID;
+	}
+	void update() {
+		//coords
+		//coords = vec3(coords.x-sinf(radians(rot))*v, coords.y+cosf(radians(rot))*v, 0);
+		//FIX translation matrix
+		if (dV < .001 && dV > -.001) {
+			v += dV;
+		}
+		else if (dV > .001) {
+			dV = .001;
+			v += dV;
+		}
+		else if (dV < -.001) {
+			dV = -.001;
+			v += dV;
+		}
+		if (x < -75) {
+			x = 75;
+		}
+		else if (x > 75) {
+			x = -75;
+		}
+		if (y > 40) {
+			y = -40;
+		}
+		else if (y < -40) {
+			y = 40;
+		}
+		v += dV;
+		dX = -sinf(rot)*v;
+		dY = cosf(rot)*v;
+		x += dX;
+		y += dY;
+
+		result = applyPerspective(translate(translation, vec3(x, y, 0))*(rotate(rotation, rot, vec3(0, 0, 1))*translate(model, vec3(0, 0, 0))));
+		//printf("Center %F,%F\n", x, y);
+
+		//result = applyPerspective(translate(rotate(translate(model,vec3(0,0,0)), rot, vec3(0.0f,0.0f,1.0f)), vec3(x, y, 0)));
+		glUniformMatrix4fv(posMat, 1, GL_FALSE, &result[0][0]);
+		glUniform3f(colorVec, color.x, color.y, color.z);
+
+	}
+	void shoot() {
+		bullets.push_back(&Bullet(VBO, programID, vec3(x, y, 0), rot));
+	}
+	void draw() {
+		glEnableVertexAttribArray(0);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
+		glDrawArrays(GL_TRIANGLES, 0, 3);
+		glDisableVertexAttribArray(0);
+	}
+	void render() {
+		glUseProgram(programID);
+		update();
+		draw();
+		glUseProgram(0);
+	}
+	Organism() {}
+	Organism(GLuint vertexB) {
+		vertexBuffer = vertexB;
+
+		verts[0] = vec3(-1.0f, -1.0f, 0.0f);
+		verts[1] = vec3(1.0f, -1.0f, 0.0f);
+		verts[2] = vec3(0.0f, 1.0f, 0.0f);
+
+		glGenBuffers(1, &vertexBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
+	}
+	Organism(GLuint vertexB, vec3 iVerts[3]) {
+		vertexBuffer = vertexB;
+
+		verts[0] = iVerts[0];
+		verts[1] = iVerts[1];
+		verts[2] = iVerts[2];
+
+		glGenBuffers(1, &vertexBuffer);
+		glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
+		glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
+	}
+};
 class Triangle {
 	GLuint vertexBuffer;
 	GLuint programID;
@@ -245,7 +422,7 @@ class Triangle {
 	GLuint colorID;
 
 	vec3 coords = vec3(0.0f, 0.0f, 0.0f);
-	vec3 color = vec3(1, 1, 1);
+	vec3 color = vec3(1, 1, 0);
 	vec3 verts[3];
 	mat4 model = mat4(1.0f);
 	mat4 translation = mat4(1.0f);
@@ -266,14 +443,14 @@ public:
 		programID = LoadShaders(vsPath, fsPath);
 	}
 	void assertUniformLocation() {
-		posistion = glGetUniformLocation(programID, "posistion");
+		/*posistion = glGetUniformLocation(programID, "posistion");
 		assert(posistion != 0xFFFFFFFF);
 		colorID = glGetUniformLocation(programID, "colorIn");
 		assert(posistion != 0xFFFFFFFF);
 		//rotation = glGetUniformLocation(programID, "rotation");
 		//assert(rotation != 0xFFFFFFFF);
 		//gScaleLocation = glGetUniformLocation(programID, "gScale");
-		//assert(gScaleLocation != 0xFFFFFFFF);
+		*///assert(gScaleLocation != 0xFFFFFFFF);
 	}
 	void setProgramID(GLuint ID) {
 		programID = ID;
@@ -281,7 +458,7 @@ public:
 	}
 	void update() {
 		//coords
-		coords = vec3(coords.x + sinf(radians(rot))*v, coords.y + cosf(radians(rot))*v, 1);
+		//coords = vec3(coords.x + sinf(radians(rot))*v, coords.y + cosf(radians(rot))*v, 1);
 		//FIX translation matrix
 		if (dV < .001 && dV > -.001) {
 			v += dV;
@@ -309,11 +486,11 @@ public:
 
 		result = applyPerspective(translation);
 		*/
-		result = applyPerspective(translate(translation, vec3(x, y, 0))*(rotate(rotation, rot, vec3(0, 0, 1))*translate(model, vec3(0, 0, 0))));
+		result = applyPerspective(translate(translation, vec3(x,y, 0))*(rotate(rotation, rot, vec3(0, 0, 1))*translate(model, vec3(0, 0, 0))));
 		//printf("Center %d,%d\n", x, y);
 		//result = applyPerspective(translate(rotate(translate(model,vec3(0,0,0)), rot, vec3(0.0f,0.0f,1.0f)), vec3(x, y, 0)));
-		glUniformMatrix4fv(posistion, 1, GL_FALSE, &result[0][0]);
-		glUniform3f(colorID, color.x, color.y, color.z);
+		glUniformMatrix4fv(posMat, 1, GL_FALSE, &result[0][0]);
+		glUniform3f(colorVec, color.x, color.y, color.z);
 
 	}
 	void draw() {
@@ -354,7 +531,7 @@ public:
 	}
 };
 
-vector<Triangle> tris;
+vector<Organism> organisms;
 Player player;
 
 //Node Stuff
@@ -456,35 +633,49 @@ public: int getN() { return n; }
 ///
 */
 static void update() {
-
+	for (int i = 0; i < bullets.size(); i++){
+		if (bullets[i]->x < -75) {
+			bullets[i]->x = 75;
+			delete bullets[i];
+			//bullets.erase(bullets.begin() + i);
+		}
+		else if (bullets[i]->x > 75) {
+			bullets[i]->x = -75;
+		}
+		if (bullets[i]->y > 40) {
+			bullets[i]->y = -40;
+		}
+		else if (bullets[i]->y < -40) {
+			bullets[i]->y = 40;
+		}
+	}
 }
 
 static void render()
 {
+	update();
 	glClear(GL_COLOR_BUFFER_BIT);
 	
-	for (int i = 0; i < tris.size(); i++) {
-		tris[i].render();
+	for (int i = 0; i < organisms.size(); i++) {
+		organisms[i].render();
 	}
-	
+	for (int i = 0; i < bullets.size(); i++) {
+		bullets[i]->render();
+	}
 	player.render();
 	glutSwapBuffers();
 	//glutPostRedisplay();//Research
 }
 
 static void input(int key, int x, int y) {
+	printf("GLUT_KEY_UP %d\n", key);
 	switch (key)
 	{
-	/*
-	case GLUT_KEY_UP: printf("GLUT_KEY_LEFT %d\n", key); player.v += .01; break;
-	case GLUT_KEY_DOWN: printf("GLUT_KEY_LEFT %d\n", key); player.v -= .01;   break;
-	case GLUT_KEY_LEFT: printf("GLUT_KEY_LEFT %d\n", key);  player.rot -= radians(1.0f); break;
-	case GLUT_KEY_RIGHT: printf("GLUT_KEY_LEFT %d\n", key); player.rot += radians(1.0f);  break;
-	*/
-	case GLUT_KEY_UP: printf("GLUT_KEY_LEFT %d\n", key); player.v += .0001; break;
-	case GLUT_KEY_DOWN: printf("GLUT_KEY_LEFT %d\n", key); player.v -= .0001;   break;
+	case GLUT_KEY_UP: printf("GLUT_KEY_UP %d\n", key); player.v += .0001; break;
+	case GLUT_KEY_DOWN: printf("GLUT_KEY_DOWN %d\n", key); player.v -= .0001;   break;
 	case GLUT_KEY_LEFT: printf("GLUT_KEY_LEFT %d\n", key);  player.rot += radians(5.0f); break;
-	case GLUT_KEY_RIGHT: printf("GLUT_KEY_LEFT %d\n", key); player.rot -= radians(5.0f);  break;
+	case GLUT_KEY_RIGHT: printf("GLUT_KEY_RIGHT %d\n", key); player.rot -= radians(5.0f);  break;
+	case GLUT_KEY_SHIFT_L: printf("Space Bar %d\n", key); player.shoot();  break;
 	}
 }
 
@@ -516,7 +707,7 @@ int main(int argc, char** argv)
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
 	GLuint programID = LoadShaders("test.vs", "test.fs");
-	
+	/*
 	vec3 tri1[3];
 	tri1[0] = vec3(	1.0f,  1.0f, 0.0f);
 	tri1[1] = vec3( 0.0f,  1.0f, 0.0f);
@@ -540,7 +731,7 @@ int main(int argc, char** argv)
 	tris[1].setProgramID(programID);
 	tris[2].setProgramID(programID);
 	
-
+	*/
 	vec3 playTri[3];
 	playTri[0] = vec3(-1.0f, -1.0f, 0.0f);
 	playTri[1] = vec3(0.0f, 1.0f, 0.0f);
@@ -549,6 +740,11 @@ int main(int argc, char** argv)
 	player = Player(VBO, playTri);
 	player.setProgramID(programID);
 
+	posMat = glGetUniformLocation(programID, "posistion");
+	assert(posMat != 0xFFFFFFFF);
+	colorVec = glGetUniformLocation(programID, "colorIn");
+	assert(colorVec != 0xFFFFFFFF);
+	
 	glutMainLoop();
 
 	return 0;
