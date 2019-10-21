@@ -1,7 +1,4 @@
-# ML-Asteroids-To-Be-Named
-
-This is going to be amazing....
-Just hold on
+# NEAT Application
 
 We are trying to recreate and model our own program around the NEAT algorithm. Using a game much like the aethetics of Asteroids, where you the main player fend off enemies.
 The enemies logic trees are represented as neural networks, or a mathmatical topology using graph theory. THe purpose of this program is to
